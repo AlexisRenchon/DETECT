@@ -1,0 +1,7 @@
+# ignore VIM temp files
+*~
+*swp
+
+# ignore input and output
+/input/
+/output/
