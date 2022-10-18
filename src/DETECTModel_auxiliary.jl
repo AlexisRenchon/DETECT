@@ -2,58 +2,68 @@
 
 # 1. CO2 Diffusivity
 
-function diffusion_coefficient(Dstp, Ts, T₀, P₀, P)
-	Dg₀ = Dstp * (Ts/T₀)^1.75 * (P₀/P)
+function diffusion_coefficient(Dstp::FT, Ts::FT, T₀::FT, P₀::FT, P::FT) where {FT}
+	Dg₀ = Dstp * (Ts/T₀)^FT(1.75) * (P₀/P)
+	return Dg₀
 end
 
-function soil_porosity(BD, PD, θ)
+function soil_porosity(BD::FT, PD::FT, θ::FT) where {FT}
 	ϕₜ = 1 + BD/PD
-	ϕ = ϕₜ - θ 
+	ϕ = ϕₜ - θ
+	return ϕ
 end
 
-function CO2_diffusivity(Dg₀, ϕ₁₀₀, ϕ, b)
-	Dgs = Dg₀ * (2ϕ₁₀₀^3 + 0.04ϕ₁₀₀) * (ϕ/ϕ₁₀₀)^(2 + 3/b)
+function CO2_diffusivity(Dg₀::FT, ϕ₁₀₀::FT, ϕ::FT, b::FT) where {FT}
+	Dgs = Dg₀ * (FT(2)ϕ₁₀₀^FT(3) + FT(0.04)ϕ₁₀₀) * (ϕ/ϕ₁₀₀)^(FT(2) + FT(3)/b)
+	return Dgs
 end
 
 # 2.1 CO2 source: root
 
-function root_temp_θ_adj1(α₁ᵣ, α₂ᵣ, α₃ᵣ, θ, θₐᵣ)
+function root_temp_θ_adj1(α₁ᵣ::FT, α₂ᵣ::FT, α₃ᵣ::FT, θ::FT, θₐᵣ::FT) where {FT}
 	fᵣ = exp(α₁ᵣθ + α₂ᵣθₐᵣ + α₃ᵣθθₐᵣ)
+	return fᵣ
 end
 
-function temp_θ_adj2(E₀, Tᵣₑ, T₀, Tₛ, T₀)
-	g = exp(E₀ * (1/(Tᵣₑ - T₀) - 1/(Tₛ - T₀)))
+function temp_θ_adj2(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT, T₀::FT) where {FT}
+	g = exp(E₀ * (FT(1)/(Tᵣₑ - T₀) - FT(1)/(Tₛ - T₀)))
+	return g
 end
 
-function energy_act(E₀ₛ, α₄, Tₛₐ)
+function energy_act(E₀ₛ::FT, α₄::FT, Tₛₐ::FT) where {FT}
 	E₀ = E₀ₛ + α₄Tₛₐ
+	return E₀
 end
 
-function Root_source(Rᵦ, Cᵣ, fᵣ, gᵣ)
+function Root_source(Rᵦ::FT, Cᵣ::FT, fᵣ::FT, gᵣ::FT) where {FT}
 	Sᵣ = Rᵦ * Cᵣ * f * g
+	return Sᵣ
 end
 
 # 2.2 CO2 source: microbe
 
-function microbe_temp_θ_adj1(α₁ₘ, α₂ₘ, α₃ₘ, θ, θₐₘ)
-	fₘ = exp(α₁ₘθ + α₂ₘθₐₘ + α₃ₘθθₐₘ)
+function microbe_temp_θ_adj1(α₁ₘ::FT, α₂ₘ::FT, α₃ₘ::FT, θ::FT, θₐₘ::FT) where {FT}
+	fₘ = exp(α₁ₘθ + α₂ₘθₐₘ + α₃ₘθθₐₘ) where {FT}
+	return fₘ
 end
 
-function Vmax(Vᵦ, fₘ, g)
+function Vmax(Vᵦ::FT, fₘ::FT, g::FT) where {FT}
 	Vmax = Vᵦ * fₘ * g # g defined in 2.1
+	return Vmax
 end
 
-function Csol(Csom, p, θ, Dₗᵢ)
-	Csol = Csom * p * θ^3 * Dₗᵢ
+function Csol(Csom::FT, p::FT, θ::FT, Dₗᵢ::FT) where {FT}
+	Csol = Csom * p * θ^FT(3) * Dₗᵢ
+	return Csol
 end
 
-function Microbe_source(Vmax, Csol, Km, Cmic, CUE)
-	Sₘ = Vmax * Csol/(Kₘ + Csol) * Cmic * (1 - CUE)
+function Microbe_source(Vmax::FT, Csol::FT, Km::FT, Cmic::FT, CUE::FT) where {FT}
+	Sₘ = Vmax * Csol/(Kₘ + Csol) * Cmic * (FT(1) - CUE)
+	return Sₘ
 end
 
-function S(Sᵣ, Sₘ)
+function S(Sᵣ::FT, Sₘ::FT) where {FT}
 	S = Sᵣ + Sₘ
+	return S
 end
-
-
 
