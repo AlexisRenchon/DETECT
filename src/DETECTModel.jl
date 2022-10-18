@@ -14,6 +14,7 @@ using ClimaLSM.Domains
 import ClimaLSM: name, make_rhs, prognostic_vars, prognostic_types
 import ClimaLSM.Domains: coordinates
 
+include("./DETECTModel_auxiliary.jl")
 
 # 1. Parameters  
 
@@ -115,15 +116,17 @@ source and diffusion terms.
 
 $(DocStringExtensions.FIELDS)
 """
-struct DETECTModel{FT, PS, D, BC, S} <: AbstractSoilModel{FT}
+struct DETECTModel{FT, PS, D, BC, S, DT} <: AbstractModel{FT}
     "the parameter set"
-    parameters::PS
+    parameters::PS # in constructor you could enforce that it is ::DETECTParameters{FT}
     "the soil domain, using ClimaCore.Domains"
     domain::D
     "the boundary conditions, of type AbstractSoilBoundaryConditions"
-    boundary_conditions::BC
+    boundary_conditions::BC # maybe also have an FT
     "A tuple of sources, each of type AbstractSoilSource"
     sources::S
+    " Drivers"
+    driver::DT
 end
 
 ClimaLSM.name(model::DETECTModel) = :DETECT;
@@ -131,9 +134,9 @@ ClimaLSM.name(model::DETECTModel) = :DETECT;
 
 # 3. Prognostic and Auxiliary variables 
 
-ClimaLSM.prognostic_vars(::DETECTModel) = (:C,) # pCO2 in soil, [ppm]
+ClimaLSM.prognostic_vars(::DETECTModel) = (:C,) # pCO2 in soil, [ppm] # stored in Y.DETECT.C
 ClimaLSM.prognostic_types(::DETECTModel{FT}) where {FT} = (FT,)
-ClimaLSM.auxiliary_vars(::DETECTModel) = (:D, :S) # Diffusivity, Source (microbe + root)
+ClimaLSM.auxiliary_vars(::DETECTModel) = (:D, :Sₘ, :Sᵣ) # Diffusivity, Source (microbe + root) # stored in p.DETECT.D
 ClimaLSM.auxiliary_types(::DETECTModel{FT}) where {FT} = (FT, FT)
 
 
@@ -157,48 +160,61 @@ function ClimaLSM.make_rhs(model::DETECTModel)
             boundary_fluxes(model.boundary_conditions, p, t)
 
         interpc2f = Operators.InterpolateC2F()
-
         gradc2f_C = Operators.GradientC2F()
-
-        # We are setting a boundary value on a flux, which is a gradient of a scalar
-        # Therefore, we should set boundary conditions in terms of a covariant vector
-        # We set the third component first - supply a Covariant3Vector
-
-        # Without topography only
-        # In Cartesian coordinates, W (z^) = Cov3 (z^)= Contra3 (n^ = z^)
-        # In spherical coordinates, W (r^) = Cov3 (r^) = Contra3 (n^ = r^)
-
-        # It appears that the WVector is converted internally to a Covariant3Vector for the gradient value
-        # at the boundary. Offline tests indicate that you get the same thing if
-        # the bc is WVector(F) or Covariant3Vector(F*Δr) or Contravariant3Vector(F/Δr)
-
         divf2c_C = Operators.DivergenceF2C(
             top = Operators.SetValue(Geometry.WVector.(top_flux_bc)),
             bottom = Operators.SetValue(Geometry.WVector.(bot_flux_bc)),
-        )
-
-        # GradC2F returns a Covariant3Vector, so no need to convert.
+        ) # -∇ ⋅ (-D∇C), where -D∇C is a flux of C02. ∇C point in direction of increasing C, so the flux is - this.
         @. dY.DETECT.C =
-	                 divf2c_C(interpc2f(Y.DETECT.D)*gradc2f_C(Y.DETECT.C)) + Y.DETECT.S # !!!!! not sure this is correct
+	                 -divf2c_C(-interpc2f(p.DETECT.D)*gradc2f_C(Y.DETECT.C))
 
-        # Horizontal contributions
-        horizontal_components!(dY, model.domain, model, p, z)
-
-        # Source terms
+        # Source terms are added in here
         for src in model.sources
-            source!(dY, src, Y, p)
+            source!(dY, src, Y, p, model.parameters)
         end
 
-        # This has to come last
-        dss!(dY, model.domain)
     end
     return rhs!
 end
 
+abstract type AbstractCarbonSource end
+struct RootProduction end
+struct MicrobeProduction end
+
+function source!(dY, src::RootProduction, Y, p, params)
+
+    dY .+= p.DETECT.Sᵣ
+end
+
+function source!(dY, src::MicrobeProduction, Y, p, params)
+   
+    dY .+= p.DETECT.Sₘ
+end
 
 # 5. Auxiliary variables
+abstract type AbstractSoilDriver end
+struct PrescribedSoil <: AbstractSoilDriver
+    temperature::Function # (t,z) -> exp(-z)*sin(t), or e.g. a spline fit to data
+    volumetric_liquid_fraction::Function
+end
 
-"""
+
+function soil_temperature(driver::PrescribedSoil, p, Y, t, z)
+    return driver.temperature(t, z)
+end
+function soil_moisture(driver::PrescribedSoil, p, Y, t, z)
+    return driver.volumetric_liquid_fraction(t, z)
+end
+#=
+function soil_moisture(driver::PrognosticSoil, p, Y, t, z)
+    return Y.soil.ϑ_l
+end
+
+function soil_temperature(driver::PrognosticSoil, p, Y, t, z)
+    return p.soil.T
+end
+=#
+    """
     make_update_aux(model::DETECTModel)
 
 An extension of the function `make_update_aux`, for the DETECT equation. 
@@ -208,22 +224,16 @@ variables `p.soil.variable` in place.
 This has been written so as to work with Differential Equations.jl.
 """
 function ClimaLSM.make_update_aux(model::DETECTModel)
-    function update_aux!(p, Y, t)
-        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = model.parameters
+    function update_aux!(p, Y, t) 
+        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, P, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀ = model.parameters
+        Ts = soil_temperature(model.drivers.soil.temperature,p, Y, t, z)
 	@. p.DETECT.D = CO2_diffusivity(
 					ϕ₁₀₀,
-					diffusion_coefficient(),
+					diffusion_coefficient(Dstp, Ts, T₀, P₀, P),
 					soil_porosity(BD, PD),
 					) 
 
-	# FUNCTION FOR EFFECTIVE DIFFUSIVITY OF CO2 in Soil/soil_respiration_parameterizations.jl
-			# hydraulic_conductivity(
-            # K_sat,
-            # vg_m,
-            # effective_saturation(ν, Y.soil.ϑ_l, θ_r),
-        # )
-	@. p.DETECT.S = CO2_source(
-				   Root_source(
+	@. p.DETECT.Sᵣ = root_source(
 					       Rᵦ,
 					       Rᶜ,
 					       root_θ_adj(α₁ᵣ, α₂ᵣ, α₃ᵣ, α₄),
@@ -231,8 +241,8 @@ function ClimaLSM.make_update_aux(model::DETECTModel)
 							energy_act(E₀ₛ),
 							T₀,
 							),
-					       ),
-				   Microbe_source(
+    )
+   @. p.DETECT.Sₘ = microbe_source(
 						  Kₘ, 
 						  CUE,
 						  Vmax(
@@ -242,26 +252,21 @@ function ClimaLSM.make_update_aux(model::DETECTModel)
 						       ),
 						  Csol(Dₗᵢ, p),
 						  Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ,
-						  ),
-				   )
+						  )
 
-	# FUNCTION FOR SOURCE (i.e., production) OF CO2 in Soil/soil_respiration_parameterizations.jl
-	# pressure_head(vg_α, vg_n, vg_m, θ_r, Y.soil.ϑ_l, ν, S_s)
     end
     return update_aux!
 end
 
 
-# 6. Make ODE function
-
-function ClimaLSM.make_ode_function(model::DETECTModel)
-	rhs! = make_rhs(DETECTModel)
-	update_aux! = make_update_aux(DETECTModel)
-	function ode_function!(dY, Y, p, t)
-		update_aux!(p, Y, t)
-		rhs!(dY, Y, p, t)
-	end
-	return ode_function!
+struct FluxBC
+    top::Function
+    bottom::Function
 end
+
+function boundary_fluxes(f::FluxBC, p, t)
+    return top(t), bottom(t)
+end
+
 
 

@@ -1,6 +1,6 @@
 # example of parameter value, from https://gmd.copernicus.org/articles/11/1909/2018/#&gid=1&pid=1
 
-Rᶜ = FT(111.5) # mg C cm-2, nb: do we use unitful?
+Rᶜ = FT(111.5) # mg C cm-2, nb: do we use unitful? # convert to kg/m^2
 Rᵦ = FT(6e-5)
 α₁ᵣ = FT(11.65)
 α₂ᵣ = FT(20.7)
@@ -22,6 +22,8 @@ T₀ = FT(227.5)
 BD = FT(1.12)
 ϕ₁₀₀ = FT(18.46)
 PD = FT()
+Dstp = FT(1.39e-5)
+P₀ = FT(101325)
 
 
 
