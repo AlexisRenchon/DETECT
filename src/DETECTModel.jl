@@ -60,7 +60,7 @@ struct DETECTParameters{FT <: AbstractFloat}
 
   # shared parameters between root/microbial submodels
     "Temperature sensitivity parameter, somewhat analogous to an energy activation (Kelvin)"
-    E₀::FT 
+    E₀ₛ::FT 
     "Temperature sensitivity-related parameter (Kelvin)"
     T₀::FT
     "The effect of antecedent soil temperature on root and microbial respiration (unitless)"
@@ -93,7 +93,7 @@ function DETECTParameters(;
     CUE::FT,
     p::FT,
     Dₗᵢ::FT,
-    E₀::FT, 
+    E₀ₛ::FT, 
     T₀::FT,
     α₄::FT,
     α₅::FT,
@@ -101,7 +101,7 @@ function DETECTParameters(;
     ϕ₁₀₀::FT,
     PD::FT,
 ) where {FT}
-    return DETECTParameters{FT}(Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀, T₀, α₄, α₅, BD, ϕ₁₀₀, PD)
+    return DETECTParameters{FT}(Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD)
 end
 
 
@@ -151,7 +151,7 @@ This has been written so as to work with Differential Equations.jl.
 """
 function ClimaLSM.make_rhs(model::DETECTModel)
     function rhs!(dY, Y, p, t)
-        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = model.parameters
+        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = model.parameters
         
 	top_flux_bc, bot_flux_bc =
             boundary_fluxes(model.boundary_conditions, p, t)
@@ -209,7 +209,7 @@ This has been written so as to work with Differential Equations.jl.
 """
 function ClimaLSM.make_update_aux(model::DETECTModel)
     function update_aux!(p, Y, t)
-        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = model.parameters
+        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = model.parameters
 	@. p.DETECT.D = CO2_diffusivity(
 					ϕ₁₀₀,
 					diffusion_coefficient(),
@@ -226,16 +226,20 @@ function ClimaLSM.make_update_aux(model::DETECTModel)
 				   Root_source(
 					       Rᵦ,
 					       Rᶜ,
-					       root_temp_θ_adj1(α₁ᵣ, α₂ᵣ, α₃ᵣ, α₄),
-					       root_temp_θ_adj2(
-								energy_act(E₀),
-								T₀,
-								),
+					       root_θ_adj(α₁ᵣ, α₂ᵣ, α₃ᵣ, α₄),
+					       temp_adj(
+							energy_act(E₀ₛ),
+							T₀,
+							),
 					       ),
 				   Microbe_source(
 						  Kₘ, 
 						  CUE,
-						  Vmax(Vᵦ, E₀, T₀),
+						  Vmax(
+						       Vᵦ,
+						       energy_act(E₀ₛ),
+						       T₀
+						       ),
 						  Csol(Dₗᵢ, p),
 						  Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ,
 						  ),
