@@ -21,8 +21,8 @@ Diffusion coefficient for CO₂ in air at standard temperature (T₀, 273 K) and
 (P₀, 101.325 kPa); Tₛ is the soil temperature (K) at depth z and time t, and P(t) is the
 air pressure (kPa) just above the soil surface at time t. 
 """
-function diffusion_coefficient(Dstp::FT, Ts::FT, T₀::FT, P₀::FT, P::FT) where {FT}
-	Dg₀ = Dstp * (Ts/T₀)^FT(1.75) * (P₀/P)
+function diffusion_coefficient(Dstp::FT, Tₛ::FT, T₀::FT, P₀::FT, P::FT) where {FT}
+	Dg₀ = Dstp * (Tₛ/T₀)^FT(1.75) * (P₀/P)
 	return Dg₀
 end
 
@@ -57,19 +57,8 @@ end
 Soil moisture scaling function for roots, accounting for antecedent conditions. 
 """
 function root_θ_adj(α₁ᵣ::FT, α₂ᵣ::FT, α₃ᵣ::FT, θ::FT, θₐᵣ::FT) where {FT}
-	fᵣ = exp(α₁ᵣθ + α₂ᵣθₐᵣ + α₃ᵣθθₐᵣ)
+	fᵣ = exp(α₁ᵣ*θ + α₂ᵣ*θₐᵣ + α₃ᵣ*θ*θₐᵣ)
 	return fᵣ
-end
-
-
-"""
-	temp_adj(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT, T₀::FT) where {FT}
-
-Temperature scaling function, motivated by Lloyd and Taylow (1994).
-"""
-function temp_adj(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT, T₀::FT) where {FT}
-	g = exp(E₀ * (FT(1)/(Tᵣₑ - T₀) - FT(1)/(Tₛ - T₀)))
-	return g
 end
 
 
@@ -81,8 +70,19 @@ temperature sensitivity of Sᵣ, accounting for antecedent condition
 of soil temperature. 
 """
 function energy_act(E₀ₛ::FT, α₄::FT, Tₛₐ::FT) where {FT}
-	E₀ = E₀ₛ + α₄Tₛₐ
+	E₀ = E₀ₛ + α₄*Tₛₐ
 	return E₀
+end
+
+
+"""
+	temp_adj(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT, T₀::FT) where {FT}
+
+Temperature scaling function, motivated by Lloyd and Taylow (1994).
+"""
+function temp_adj(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT) where {FT}
+	g = exp(E₀ * (FT(1)/(Tᵣₑ - T₀) - FT(1)/(Tₛ - T₀)))
+	return g
 end
 
 
@@ -91,8 +91,8 @@ end
 
 CO₂ production in the soil by roots, in depth and time. 
 """
-function root_source(Rᵦ::FT, Cᵣ::FT, fᵣ::FT, gᵣ::FT) where {FT}
-	Sᵣ = Rᵦ * Cᵣ * f * g
+function root_source(Rᵦ::FT, Cᵣ::FT, fᵣ::FT, g::FT) where {FT}
+	Sᵣ = Rᵦ * Cᵣ * fᵣ * g
 	return Sᵣ
 end
 
@@ -103,28 +103,28 @@ end
 Soil moisture scaling function for microbe, accounting for antecedent conditions.
 """
 function microbe_θ_adj(α₁ₘ::FT, α₂ₘ::FT, α₃ₘ::FT, θ::FT, θₐₘ::FT) where {FT}
-	fₘ = exp(α₁ₘθ + α₂ₘθₐₘ + α₃ₘθθₐₘ) where {FT}
+	fₘ = exp(α₁ₘ*θ + α₂ₘ*θₐₘ + α₃ₘ*θ*θₐₘ) 
 	return fₘ
 end
 
 
 """
-	Vmax(Vᵦ::FT, fₘ::FT, g::FT) where {FT}
+	fVmax(Vᵦ::FT, fₘ::FT, g::FT) where {FT}
 
 Maximum potential decomposition rate. 
 """
-function Vmax(Vᵦ::FT, fₘ::FT, g::FT) where {FT}
+function fVmax(Vᵦ::FT, fₘ::FT, g::FT) where {FT}
 	Vmax = Vᵦ * fₘ * g # g defined in 2.1
 	return Vmax
 end
 
 
 """
-	Csol(Csom::FT, p::FT, θ::FT, Dₗᵢ::FT) where {FT}
+	fCsol(Csom::FT, p::FT, θ::FT, Dₗᵢ::FT) where {FT}
 
 Soluble soil-C pool. 
 """
-function Csol(Csom::FT, p::FT, θ::FT, Dₗᵢ::FT) where {FT}
+function fCsol(Csom::FT, p::FT, θ::FT, Dₗᵢ::FT) where {FT}
 	Csol = Csom * p * θ^FT(3) * Dₗᵢ
 	return Csol
 end
@@ -142,11 +142,11 @@ end
 
 
 """
-	S(Sᵣ::FT, Sₘ::FT) where {FT}
+	fS(Sᵣ::FT, Sₘ::FT) where {FT}
 
 Total CO₂ production in the soil (roots + microbes).
 """
-function S(Sᵣ::FT, Sₘ::FT) where {FT}
+function fS(Sᵣ::FT, Sₘ::FT) where {FT}
 	S = Sᵣ + Sₘ
 	return S
 end
