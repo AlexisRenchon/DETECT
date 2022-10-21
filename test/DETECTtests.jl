@@ -1,6 +1,8 @@
 FT = Float32
-include("src/DETECTModel_auxiliary.jl")
-include("src/DETECTModel_params.jl")
+using DETECT
+abs_path = pkgdir(DETECT)
+include(joinpath(abs_path,"src/DETECTModel_auxiliary.jl"))
+include(joinpath(abs_path,"src/DETECTModel_params.jl"))
 
 fTₛ(z,t) = exp(-z)*sin(t)*100 + 273
 fθ(z,t) = exp(-z)*sin(t)

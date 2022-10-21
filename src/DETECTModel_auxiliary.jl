@@ -21,8 +21,8 @@ Diffusion coefficient for CO₂ in air at standard temperature (T₀, 273 K) and
 (P₀, 101.325 kPa); Tₛ is the soil temperature (K) at depth z and time t, and P(t) is the
 air pressure (kPa) just above the soil surface at time t. 
 """
-function diffusion_coefficient(Dstp::FT, Tₛ::FT, T₀::FT, P₀::FT, P::FT) where {FT}
-	Dg₀ = Dstp * (Tₛ/T₀)^FT(1.75) * (P₀/P)
+function diffusion_coefficient(Dstp::FT, Tₛ::FT, T₀::FT, P₀::FT, Pz::FT) where {FT}
+	Dg₀ = Dstp * (Tₛ/T₀)^FT(1.75) * (P₀/Pz)
 	return Dg₀
 end
 
@@ -34,7 +34,7 @@ Air filled soil porosity, which is related to the total soil porosity (ϕt) and
 volumetric soil water content (θ).
 """
 function air_filled_soil_porosity(BD::FT, PD::FT, θ::FT) where {FT}
-	ϕₜ = 1 + BD/PD # soil porosity
+	ϕₜ = 1 - BD/PD # soil porosity
 	ϕ = ϕₜ - θ
 	return ϕ
 end
@@ -45,7 +45,7 @@ end
 
 The diffusivity of CO₂ within the soil (Dgs).
 """
-function CO₂_diffusivity(Dg₀::FT, ϕ₁₀₀::FT, ϕ::FT, b::FT) where {FT}
+function CO2_diffusivity(Dg₀::FT, ϕ₁₀₀::FT, ϕ::FT, b::FT) where {FT}
 	Dgs = Dg₀ * (FT(2)ϕ₁₀₀^FT(3) + FT(0.04)ϕ₁₀₀) * (ϕ/ϕ₁₀₀)^(FT(2) + FT(3)/b)
 	return Dgs
 end
@@ -124,8 +124,8 @@ end
 
 Soluble soil-C pool. 
 """
-function fCsol(Csom::FT, p::FT, θ::FT, Dₗᵢ::FT) where {FT}
-	Csol = Csom * p * θ^FT(3) * Dₗᵢ
+function fCsol(Csom::FT, pf::FT, θ::FT, Dₗᵢ::FT) where {FT}
+	Csol = Csom * pf * θ^FT(3) * Dₗᵢ
 	return Csol
 end
 
