@@ -6,13 +6,15 @@ nelems = 50 # number of layers in the vertical
 zmin = FT(-5)
 zmax = FT(0.0)
 soil_domain = Column(; zlim = (zmin, zmax), nelements = nelems)
-top_flux_bc = FT(0.0) # should be catm, we want a boundary condition on the state variable itself, not flux.
-bot_flux_bc = FT(0.0)
+top_bc = FT(765.0) # atm CO2 in mg m-3
+bot_bc = FT(765.0) # let's just assume starting condition vertically homogeneous for now 
 sources = (RootProduction(),MicrobeProduction()) # is S a source? Do I need to code differently?
 boundary_fluxes = FluxBC(top_flux_bc, bot_flux_bc)
-params = DETECTParameters{FT}(Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀, T₀, α₄, α₅, BD, ϕ₁₀₀, PD)
-θ_soil(t, z) = #
-soil_temp(t,z) = #
+params = DETECTParameters{FT}(θ, Tₛ, θₐᵣ, θₐₘ, Tₛₐ, p, Cᵣ, Csom, Cmic, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀, b)
+
+θ_soil(t, z) = exp(-z)*sin(t)*100 + 273 # for now
+soil_temp(t, z) = exp(-z)*sin(t) #
+
 DETECT = DETECTModel{FT}(;
 	parameters = params,
 	domain = soil_domain,
@@ -29,9 +31,8 @@ function init_DETECT!(YDETECT, z, params)
 		z::FT,
 		params::DETECTParameters{FT},
 	) where {FT}
-		@unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = params
-		C = #? #f(z)?
-	
+		@unpack θ, Tₛ, θₐᵣ, θₐₘ, Tₛₐ, p, Cᵣ, Csom, Cmic, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀, b = params
+		C = FT(765.0) # should be f(z)	
 		return FT(C)
 	end
 	YDETECT.C .= CO2_profile.(z, Ref(params))

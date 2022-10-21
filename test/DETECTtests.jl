@@ -2,11 +2,11 @@ FT = Float32
 include("src/DETECTModel_auxiliary.jl")
 include("src/DETECTModel_params.jl")
 
-fTₛ(z,t) = exp(-z)*sin(t)*100
+fTₛ(z,t) = exp(-z)*sin(t)*100 + 273
 fθ(z,t) = exp(-z)*sin(t)
 fθₐᵣ(z,t) = exp(-z)*sin(t) # weighted mean θ past 4 days
 fθₐₘ(z,t) = exp(-z)*sin(t) # weighted mean θ past 4 days
-fTₛₐ(z,t) = exp(-z)*sin(t)*100 # weighted mean Ts past 4 weeks
+fTₛₐ(z,t) = exp(-z)*sin(t)*100 + 273 # weighted mean Ts past 4 weeks
 
 t = 1
 z = 1
