@@ -78,7 +78,7 @@ end
 """
 	temp_adj(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT, T₀::FT) where {FT}
 
-Temperature scaling function, motivated by Lloyd and Taylow (1994).
+Temperature scaling function, motivated by Lloyd and Taylor (1994).
 """
 function temp_adj(E₀::FT, Tᵣₑ::FT, T₀::FT, Tₛ::FT) where {FT}
 	g = exp(E₀ * (FT(1)/(Tᵣₑ - T₀) - FT(1)/(Tₛ - T₀)))

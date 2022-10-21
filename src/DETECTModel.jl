@@ -21,13 +21,33 @@ include("./DETECTModel_auxiliary.jl")
 """
     DETECTParameters{FT <: AbstractFloat}
 A struct for storing parameters of the `DETECTModel`.
-
-$(DocStringExtensions.FIELDS)
 """
 struct DETECTParameters{FT <: AbstractFloat}
+  # parameters (drivers?) that vary with depth and time
+    "Soil moisture (m³ m⁻³) - vary in time and depth"
+    θ::FT # driver?
+    "Soil temperature (Kelvin) - vary in time and depth"
+    Tₛ::FT # driver?
+    "Antecedent soil moisture for root - vary in time and depth"
+    θₐᵣ::FT # ?
+    "Antecedent soil moisture for microbe - vary in time and depth"
+    θₐₘ::FT
+    "Antecedent soil temperature - vary in time and depth"
+    Tₛₐ::FT
+
+  # parameters (drivers?) that vary with depth
+    "Pressure (kPa)"
+    p::FT
+    "Root biomass carbon at depth z (!! should be a function of z) (mg C cm⁻²)"
+    Cᵣ::FT
+    "Soil organic C content at depth z (!! should be a function of z) (mg C cm⁻²)"
+    Csom::FT
+    "Microbial C pool at depth z (!! should be a function of z) (mg C cm⁻²)"
+    Cmic::FT
+
   # root submodel parameters
-    "Total root biomass C in a 1 m deep by 1 cm² soil column (mg C cm⁻²)"
-    Rᶜ::FT
+    #"Total root biomass C in a 1 m deep by 1 cm² soil column (mg C cm⁻²)" --> this is Cᵣ, see section S1 paper
+    #Rᶜ::FT
     "Root mass-base respiration rate at 10°C and mean environmental conditions (mg C cm⁻³ h⁻¹)"
     Rᵦ::FT
     "The effect of soil water content (θ) on root respiration (unitless)"
@@ -66,6 +86,8 @@ struct DETECTParameters{FT <: AbstractFloat}
     T₀::FT
     "The effect of antecedent soil temperature on root and microbial respiration (unitless)"
     α₄::FT
+    "Reference temperature (Kelvin)"
+    Tᵣₑ::FT
 
   # soil CO₂ diffusivity submodel parameters
     "Absolute value of the slope of the line relating log(ψ) versus log(θ) (unitless)"
@@ -76,10 +98,24 @@ struct DETECTParameters{FT <: AbstractFloat}
     ϕ₁₀₀::FT
     "Particle density"
     PD::FT
+    "Diffusion coefficient for CO₂ in air at standard temperature and pressure (m² s⁻¹)"
+    Dstp::FT
+    "Standard pressure (kPa)"
+    P₀::FT
+    "Parameter related to the pore size distribution of the soil (unitless)"
+    b::FT
 end
 
 function DETECTParameters(;
-    Rᶜ::FT,
+    θ::FT,
+    Tₛ::FT,
+    θₐᵣ::FT,
+    θₐₘ::FT,
+    Tₛₐ::FT,
+    p::FT,
+    Cᵣ::FT,
+    Csom::FT,
+    Cmic::FT,
     Rᵦ::FT,
     α₁ᵣ::FT,
     α₂ᵣ::FT,
@@ -97,12 +133,16 @@ function DETECTParameters(;
     E₀ₛ::FT, 
     T₀::FT,
     α₄::FT,
+    Tᵣₑ::FT,
     α₅::FT,
     BD::FT,
     ϕ₁₀₀::FT,
     PD::FT,
+    Dstp::FT,
+    P₀::FT,
+    b::FT,
 ) where {FT}
-    return DETECTParameters{FT}(Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD)
+    return DETECTParameters{FT}(θ, Tₛ, θₐᵣ, θₐₘ, Tₛₐ, p, Cᵣ, Csom, Cmic, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀, b)
 end
 
 
@@ -113,8 +153,6 @@ end
 
 A model for simulating the production and transport of CO₂ in the soil with dynamic
 source and diffusion terms.
-
-$(DocStringExtensions.FIELDS)
 """
 struct DETECTModel{FT, PS, D, BC, S, DT} <: AbstractModel{FT}
     "the parameter set"
@@ -154,7 +192,7 @@ This has been written so as to work with Differential Equations.jl.
 """
 function ClimaLSM.make_rhs(model::DETECTModel)
     function rhs!(dY, Y, p, t)
-        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD = model.parameters
+        @unpack θ, Tₛ, θₐᵣ, θₐₘ, Tₛₐ, p, Cᵣ, Csom, Cmic, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀, b = model.parameters
         
 	top_flux_bc, bot_flux_bc =
             boundary_fluxes(model.boundary_conditions, p, t)
@@ -192,7 +230,9 @@ function source!(dY, src::MicrobeProduction, Y, p, params)
 end
 
 # 5. Auxiliary variables
+
 abstract type AbstractSoilDriver end
+
 struct PrescribedSoil <: AbstractSoilDriver
     temperature::Function # (t,z) -> exp(-z)*sin(t), or e.g. a spline fit to data
     volumetric_liquid_fraction::Function
@@ -202,9 +242,21 @@ end
 function soil_temperature(driver::PrescribedSoil, p, Y, t, z)
     return driver.temperature(t, z)
 end
+
 function soil_moisture(driver::PrescribedSoil, p, Y, t, z)
     return driver.volumetric_liquid_fraction(t, z)
 end
+
+
+# function for θₐᵣ(θ, t, z)
+# function for θₐₘ(θ, t, z)
+# function for Tₛₐ(Tₛ, t, z)
+# function for P(z)
+# function for Cᵣ(z)
+# function for Csom(z)
+# function for Cmic(z)
+
+
 #=
 function soil_moisture(driver::PrognosticSoil, p, Y, t, z)
     return Y.soil.ϑ_l
@@ -214,7 +266,9 @@ function soil_temperature(driver::PrognosticSoil, p, Y, t, z)
     return p.soil.T
 end
 =#
-    """
+
+
+"""
     make_update_aux(model::DETECTModel)
 
 An extension of the function `make_update_aux`, for the DETECT equation. 
@@ -225,34 +279,45 @@ This has been written so as to work with Differential Equations.jl.
 """
 function ClimaLSM.make_update_aux(model::DETECTModel)
     function update_aux!(p, Y, t) 
-        @unpack Rᶜ, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, P, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀ = model.parameters
-        Ts = soil_temperature(model.drivers.soil.temperature,p, Y, t, z)
+        @unpack θ, Tₛ, θₐᵣ, θₐₘ, Tₛₐ, p, Cᵣ, Csom, Cmic, Rᵦ, α₁ᵣ, α₂ᵣ, α₃ᵣ, Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ, Kₘ, CUE, p, Dₗᵢ, E₀ₛ, T₀, α₄, α₅, BD, ϕ₁₀₀, PD, Dstp, P₀, b = model.parameters
+
+        Tₛ = soil_temperature(model.drivers.soil.temperature, p, Y, t, z)
+	θ = soil_moisture(model.drivers.soil.moisture, p, Y, t, z)
+
 	@. p.DETECT.D = CO2_diffusivity(
 					ϕ₁₀₀,
+					b,
 					diffusion_coefficient(Dstp, Ts, T₀, P₀, P),
-					soil_porosity(BD, PD),
+					air_filled_soil_porosity(BD, PD, θ),
 					) 
 
 	@. p.DETECT.Sᵣ = root_source(
-					       Rᵦ,
-					       Rᶜ,
-					       root_θ_adj(α₁ᵣ, α₂ᵣ, α₃ᵣ, α₄),
-					       temp_adj(
-							energy_act(E₀ₛ),
-							T₀,
-							),
-    )
-   @. p.DETECT.Sₘ = microbe_source(
-						  Kₘ, 
-						  CUE,
-						  Vmax(
-						       Vᵦ,
-						       energy_act(E₀ₛ),
-						       T₀
-						       ),
-						  Csol(Dₗᵢ, p),
-						  Sᶜ, Mᶜ, Vᵦ, α₁ₘ, α₂ₘ, α₃ₘ,
-						  )
+				     Rᵦ,
+				     Cᵣ,
+				     root_θ_adj(θ, θₐᵣ, α₁ᵣ, α₂ᵣ, α₃ᵣ, α₄), # fᵣ
+				     temp_adj( # g
+					      Tᵣₑ,
+					      T₀,
+					      Tₛ,
+				              energy_act(E₀ₛ, α₄, Tₛₐ), # E₀
+					      ),
+    				     )
+	@. p.DETECT.Sₘ = microbe_source(
+					Kₘ,
+					Cmic,
+					CUE,
+					fVmax( # Vmax
+					     Vᵦ,
+					     microbe_θ_adj(θ, θₐₘ, α₁ₘ, α₂ₘ, α₃ₘ), # fₘ
+					     temp_adj( # g
+					              Tᵣₑ,
+					              T₀,
+					              Tₛ,
+				                      energy_act(E₀ₛ, α₄, Tₛₐ), # E₀
+					              ),
+					       ),
+					fCsol(Csom, Dₗᵢ, θ, p), # Csol
+					)
 
     end
     return update_aux!
