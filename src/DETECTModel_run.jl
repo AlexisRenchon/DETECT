@@ -1,9 +1,9 @@
 # code to run DETECTModel
 using DETECT
 path = pkgdir(DETECT)
+FT = Float32
 include(joinpath(path,"src/DETECTModel.jl"))
 include(joinpath(path, "src/DETECTModel_params.jl"))
-FT = Float32
 nelems = 50 # number of layers in the vertical
 zmin = FT(-5)
 zmax = FT(0.0)

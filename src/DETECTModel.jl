@@ -196,11 +196,11 @@ function ClimaLSM.make_rhs(model::DETECTModel)
 	top_flux_bc, bot_flux_bc =
             boundary_fluxes(model.boundary_conditions, p, t)
 
-        interpc2f = Operators.InterpolateC2F()
-        gradc2f_C = Operators.GradientC2F()
-        divf2c_C = Operators.DivergenceF2C(
-            top = Operators.SetValue(Geometry.WVector.(top_flux_bc)),
-            bottom = Operators.SetValue(Geometry.WVector.(bot_flux_bc)),
+        interpc2f = ClimaCore.Operators.InterpolateC2F()
+        gradc2f_C = ClimaCore.Operators.GradientC2F()
+        divf2c_C = ClimaCore.Operators.DivergenceF2C(
+            top = ClimaCore.Operators.SetValue(ClimaCore.Geometry.WVector.(top_flux_bc)),
+            bottom = ClimaCore.Operators.SetValue(ClimaCore.Geometry.WVector.(bot_flux_bc)),
         ) # -∇ ⋅ (-D∇C), where -D∇C is a flux of C02. ∇C point in direction of increasing C, so the flux is - this.
         @. dY.DETECT.C =
 	                 -divf2c_C(-interpc2f(p.DETECT.D)*gradc2f_C(Y.DETECT.C))
@@ -219,11 +219,11 @@ struct RootProduction end
 struct MicrobeProduction end
 
 function source!(dY, src::RootProduction, Y, p, params)
-    dY .+= p.DETECT.Sᵣ
+    dY.DETECT.C .+= p.DETECT.Sᵣ
 end
 
 function source!(dY, src::MicrobeProduction, Y, p, params)
-    dY .+= p.DETECT.Sₘ
+    dY.DETECT.C .+= p.DETECT.Sₘ
 end
 
 # 5. Auxiliary variables
@@ -310,7 +310,7 @@ function ClimaLSM.make_update_aux(model::DETECTModel)
 	@. p.DETECT.Sᵣ = root_source(
 				     Rᵦ,
 				     Cᵣ,
-				     root_θ_adj(θ, θₐᵣ, α₁ᵣ, α₂ᵣ, α₃ᵣ, α₄), # fᵣ
+				     root_θ_adj(θ, θₐᵣ, α₁ᵣ, α₂ᵣ, α₃ᵣ), # fᵣ
 				     temp_adj( # g
 					      Tᵣₑ,
 					      T₀,
@@ -346,7 +346,7 @@ struct FluxBC
 end
 
 function boundary_fluxes(f::FluxBC, p, t)
-    return top(t), bottom(t)
+    return f.top(t), f.bottom(t)
 end
 
 
